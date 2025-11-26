@@ -15,6 +15,8 @@ HEADERS = {
     )
 }
 
+CONFIG_PATH = "scraper_config.json"
+
 # Teléfonos “bonitos” tipo 323 2925350, 601 1234567, etc. (10 dígitos)
 PHONE_REGEX_MAIN = re.compile(r"\b\d{2,3}\s*\d{3}\s*\d{4}\b")
 # Cualquier cosa que pueda parecer teléfono (mínimo 7 dígitos en total)
@@ -24,6 +26,32 @@ PHONE_REGEX_ANY = re.compile(r"\d[\d\s\.\-]{4,}")
 def load_specialties(path: str = "specialties.json"):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_specialties_limit(config_path: str = CONFIG_PATH, default_limit: int = 1) -> int:
+    """
+    Lee el límite de especialidades desde scraper_config.json.
+    Si el archivo no existe o está mal, usa default_limit.
+    """
+    if not os.path.exists(config_path):
+        print(f"⚙️  {config_path} no existe. Usando límite por defecto: {default_limit}")
+        return default_limit
+
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            data = json.load(f)
+        value = int(data.get("specialties_limit", default_limit))
+        if value <= 0:
+            print(
+                f"⚠️  specialties_limit <= 0 en {config_path}. "
+                f"Usando límite por defecto: {default_limit}"
+            )
+            return default_limit
+        print(f"⚙️  Límite de especialidades desde {config_path}: {value}")
+        return value
+    except Exception as e:
+        print(f"⚠️  Error leyendo {config_path}: {e}. Usando límite {default_limit}")
+        return default_limit
 
 
 def fetch_soup(url: str) -> BeautifulSoup:
@@ -353,10 +381,10 @@ def save_to_csv(rows, path: str = "doctors.csv"):
         "address",
         "price",
         "profile_url",
-        "profile_specialty",           # especialidad en perfil
-        "profile_specialty_details",   # especialidad detallada en perfil
-        "phone_main",                  # teléfonos cerca de "Número de teléfono"
-        "phone_all",                   # todo lo que parezca teléfono en el perfil
+        "profile_specialty",
+        "profile_specialty_details",
+        "phone_main",
+        "phone_all",
     ]
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
@@ -368,16 +396,10 @@ def save_to_csv(rows, path: str = "doctors.csv"):
 def main():
     specialties = load_specialties()
 
-    # --- Límite opcional desde variable de entorno ---
-    limit_str = os.getenv("SPECIALTIES_LIMIT")
-    if limit_str:
-        try:
-            limit = int(limit_str)
-            if limit > 0:
-                specialties = specialties[:limit]
-                print(f"⚙️  Aplicando límite de especialidades: {limit}")
-        except ValueError:
-            print(f"⚠️  SPECIALTIES_LIMIT no es un entero válido: {limit_str}")
+    # --- Límite desde archivo de config (hard limit si no existe) ---
+    limit = load_specialties_limit()
+    specialties = specialties[:limit]
+    print(f"🔢 Procesando {len(specialties)} especialidades (de {limit} permitidas)")
 
     all_results = []
 
